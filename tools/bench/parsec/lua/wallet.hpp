@@ -26,7 +26,8 @@ namespace cbdc::parsec {
         account_wallet(std::shared_ptr<logging::log> log,
                        std::shared_ptr<broker::interface> broker,
                        std::shared_ptr<agent::rpc::client> agent,
-                       cbdc::buffer pay_contract_key);
+                       cbdc::buffer pay_contract_key,
+                       std::string id);
 
         /// Initializes the account by generating a new public/private key pair
         /// and inserting a new account with the given initial balance.
@@ -44,13 +45,17 @@ namespace cbdc::parsec {
         /// \param amount amount of coins to transfer.
         /// \param result_callback function to call with pay result.
         /// \return true if the transaction was successful.
-        auto pay(pubkey_t to,
+        auto pay(std::string to,
                  uint64_t amount,
                  const std::function<void(bool)>& result_callback) -> bool;
 
         /// Return the public key associated with this account.
         /// \return public key.
         [[nodiscard]] auto get_pubkey() const -> pubkey_t;
+
+        /// Return the public key associated with this account.
+        /// \return public key.
+        [[nodiscard]] auto get_id() const -> std::string;
 
         /// Request an update on the balance held by this account.
         /// \param result_callback function to call with balance update result.
@@ -74,13 +79,14 @@ namespace cbdc::parsec {
         std::shared_ptr<broker::interface> m_broker;
         cbdc::buffer m_pay_contract_key;
         cbdc::buffer m_account_key;
+        std::string m_id{};
 
         std::unique_ptr<secp256k1_context,
                         decltype(&secp256k1_context_destroy)>
             m_secp{secp256k1_context_create(SECP256K1_CONTEXT_SIGN),
                    &secp256k1_context_destroy};
 
-        [[nodiscard]] auto make_pay_params(pubkey_t to, uint64_t amount) const
+        [[nodiscard]] auto make_pay_params(std::string to, uint64_t amount) const
             -> cbdc::buffer;
 
         auto execute_params(cbdc::buffer params,

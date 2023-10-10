@@ -14,6 +14,11 @@ namespace cbdc::parsec::agent {
     /// Type returned after function execution.
     using return_type = broker::state_update_type;
 
+    /// Type for keys held by shards.
+    using key_type = buffer;
+    /// Type for values held by shards.
+    using value_type = buffer;
+
     /// Interface for an agent. Manages the lifetime of a single transaction/
     /// function execution/ticket and communication with the broker.
     class interface {

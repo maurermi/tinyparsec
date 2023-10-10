@@ -33,7 +33,7 @@ namespace cbdc::parsec::runtime_locking_shard {
                              "called try_lock with first lock but ticket "
                              "already exists");
             }
-            if(it == m_tickets.end()) {
+            if(it == m_tickets.end()) { // ticket not found, should be first lock (see below)
                 if(!first_lock) {
                     m_log->error(ticket_number,
                                  "called try_lock with unknown ticket");
@@ -244,13 +244,14 @@ namespace cbdc::parsec::runtime_locking_shard {
         return true;
     }
 
+    // emplace this within broker/impl.cpp/do_commit
     auto impl::commit(ticket_number_type ticket_number,
                       commit_callback_type result_callback) -> bool {
         auto callbacks = pending_callbacks_list_type();
         auto result = [&]() -> std::optional<shard_error> {
             std::unique_lock<std::mutex> l(m_mut);
             // Grab the ticket and ensure it exists
-            auto ticket_it = m_tickets.find(ticket_number);
+            auto ticket_it = m_tickets.find(ticket_number); // investigate how complex tickets are
             if(ticket_it == m_tickets.end()) {
                 m_log->error(this,
                              ticket_number,

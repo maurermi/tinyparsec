@@ -17,7 +17,7 @@ namespace cbdc::parsec::agent::rpc {
         parameter_type m_param;
         /// Whether the request should skip writing state changes.
         bool m_is_readonly_run{false};
-    };
+        };
 
     /// Agent RPC request type.
     using request = exec_request;

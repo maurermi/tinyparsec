@@ -11,6 +11,7 @@
 #include "util/rpc/format.hpp"
 #include "util/serialization/format.hpp"
 
+#include <string>
 #include <cassert>
 #include <future>
 
@@ -44,6 +45,20 @@ namespace cbdc::parsec::agent::rpc {
                      req.m_function.to_hex(),
                      " and param size ",
                      req.m_param.size());
+        auto s = std::string(req.m_function.c_str());
+        if(!s.substr(0,3).compare("put")) {
+            auto p = buffer();
+            p.append(s.substr(3).c_str(), s.length()-3);
+            put_row(m_broker, p, req.m_param, [&](bool res) {
+                if(!res) {
+                    m_log->error("error in put row");
+                } else {
+                    m_log->info("no error in put row");
+                }
+            });
+            callback(std::nullopt);
+            return true;
+        }
         auto id = m_next_id++;
         auto a = [&]() {
             auto agent = std::make_shared<impl>(

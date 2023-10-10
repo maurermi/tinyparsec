@@ -24,10 +24,10 @@ namespace cbdc::parsec::broker {
         /// \param directory directory instance.
         /// \param logger log instance.
         impl(runtime_locking_shard::broker_id_type broker_id,
-             std::vector<std::shared_ptr<runtime_locking_shard::interface>>
-                 shards,
-             std::shared_ptr<ticket_machine::interface> ticketer,
-             std::shared_ptr<directory::interface> directory,
+             //  std::vector<std::shared_ptr<runtime_locking_shard::interface>>
+             //      shards,
+             //  std::shared_ptr<ticket_machine::interface> ticketer,
+             //  std::shared_ptr<directory::interface> directory,
              std::shared_ptr<logging::log> logger);
 
         /// Requests a new ticket number from the ticket machine.
@@ -45,8 +45,8 @@ namespace cbdc::parsec::broker {
         /// \return true: if request to the directory was initiated
         ///         successfully.
         ///         false: only if an unexpected exception was encountered
-        auto try_lock(ticket_number_type ticket_number,
-                      key_type key,
+        auto try_lock(key_type key,
+                      value_type value,
                       lock_type locktype,
                       try_lock_callback_type result_callback) -> bool override;
 
@@ -55,37 +55,40 @@ namespace cbdc::parsec::broker {
         /// \param state_updates state updates to apply if ticket commits.
         /// \param result_callback function to call with commit result.
         /// \return true if all requests to shards were initiated successfully.
-        auto commit(ticket_number_type ticket_number,
-                    state_update_type state_updates,
+        auto commit(state_update_type state_updates,
                     commit_callback_type result_callback) -> bool override;
 
-        /// Finishes the ticket on all shards involved in the ticket.
-        /// \param ticket_number ticket number.
-        /// \param result_callback function to call with finish result.
-        /// \return true if requests to all shards were initiated successfully.
-        auto finish(ticket_number_type ticket_number,
-                    finish_callback_type result_callback) -> bool override;
+        // /// Finishes the ticket on all shards involved in the ticket.
+        // /// \param ticket_number ticket number.
+        // /// \param result_callback function to call with finish result.
+        // /// \return true if requests to all shards were initiated
+        // successfully. auto finish(ticket_number_type ticket_number,
+        //             finish_callback_type result_callback) -> bool override;
 
-        /// Rolls back the ticket on all shards involved in the ticket.
-        /// \param ticket_number ticket number.
-        /// \param result_callback function to call with rollback result.
-        /// \return true if requests to all shard were initiated successfully.
-        auto rollback(ticket_number_type ticket_number,
-                      rollback_callback_type result_callback) -> bool override;
+        // /// Rolls back the ticket on all shards involved in the ticket.
+        // /// \param ticket_number ticket number.
+        // /// \param result_callback function to call with rollback result.
+        // /// \return true if requests to all shard were initiated
+        // successfully. auto rollback(ticket_number_type ticket_number,
+        //               rollback_callback_type result_callback) -> bool
+        //               override;
 
-        /// Requests tickets managed by this broker ID from all shards and
-        /// completes partially committed tickets, and rolls back all other
-        /// tickets. Finishes all tickets.
-        /// \param result_callback function to call with recovery result.
-        /// \return true if requests to all shards were initiated successfully.
-        auto recover(recover_callback_type result_callback) -> bool override;
+        // /// Requests tickets managed by this broker ID from all shards and
+        // /// completes partially committed tickets, and rolls back all other
+        // /// tickets. Finishes all tickets.
+        // /// \param result_callback function to call with recovery result.
+        // /// \return true if requests to all shards were initiated
+        // successfully. auto recover(recover_callback_type result_callback) ->
+        // bool override;
 
-        /// Get the highest ticket number that was used. This is not to be
-        /// used for calculating a next ticket number, but is used to calculate
-        /// the pretend height of the chain in the evm runner, which is derived
-        /// from ticket numbers
-        /// \return highest ticket number that was used
-        auto highest_ticket() -> ticket_number_type override;
+        // /// Get the highest ticket number that was used. This is not to be
+        // /// used for calculating a next ticket number, but is used to
+        // calculate
+        // /// the pretend height of the chain in the evm runner, which is
+        // derived
+        // /// from ticket numbers
+        // /// \return highest ticket number that was used
+        // auto highest_ticket() -> ticket_number_type override;
 
       private:
         enum class ticket_state : uint8_t {
@@ -96,10 +99,20 @@ namespace cbdc::parsec::broker {
         };
 
         runtime_locking_shard::broker_id_type m_broker_id;
-        std::vector<std::shared_ptr<runtime_locking_shard::interface>>
-            m_shards;
-        std::shared_ptr<ticket_machine::interface> m_ticketer;
-        std::shared_ptr<directory::interface> m_directory;
+        // std::vector<
+        //     std::shared_ptr<runtime_locking_shard::interface>> // remove
+        //     m_shards;
+        // std::shared_ptr<ticket_machine::interface> m_ticketer; // remove
+        // std::shared_ptr<directory::interface> m_directory;     // remove
+
+        // need local map (shards) and counter (ticket machine)
+        std::unordered_map<runtime_locking_shard::key_type,
+                           runtime_locking_shard::value_type,
+                           hashing::const_sip_hash<key_type>>
+            m_shard;
+        // std::atomic<long> m_ticket_machine;
+        // std::mutex m_ticket_mut;
+
         std::shared_ptr<logging::log> m_log;
 
         mutable std::recursive_mutex m_mut;
@@ -123,121 +136,129 @@ namespace cbdc::parsec::broker {
             locked
         };
 
-        struct key_state_type {
-            key_state m_key_state{};
-            lock_type m_locktype{};
-            std::optional<value_type> m_value;
-        };
+        // struct key_state_type {
+        //     key_state m_key_state{};
+        //     lock_type m_locktype{};
+        //     std::optional<value_type> m_value;
+        // };
 
-        struct shard_state {
-            std::unordered_map<key_type,
-                               key_state_type,
-                               hashing::const_sip_hash<key_type>>
-                m_key_states;
-            shard_state_type m_state{};
-        };
+        // struct shard_state {
+        //     std::unordered_map<key_type,
+        //                        key_state_type,
+        //                        hashing::const_sip_hash<key_type>>
+        //         m_key_states;
+        //     shard_state_type m_state{};
+        // };
 
-        using shard_states = std::unordered_map<size_t, shard_state>;
+        // using shard_states = std::unordered_map<size_t, shard_state>;
 
-        struct state {
-            ticket_state m_state{};
-            shard_states m_shard_states;
-        };
+        // struct state {
+        //     ticket_state m_state{};
+        //     shard_states m_shard_states;
+        // };
 
-        std::unordered_map<ticket_number_type, std::shared_ptr<state>>
-            m_tickets;
+        // std::unordered_map<ticket_number_type, std::shared_ptr<state>>
+        //     m_tickets;
 
-        std::unordered_map<
-            uint64_t,
-            std::unordered_map<ticket_number_type,
-                               runtime_locking_shard::ticket_state>>
-            m_recovery_tickets;
+        // std::unordered_map<
+        //     uint64_t,
+        //     std::unordered_map<ticket_number_type,
+        //                        runtime_locking_shard::ticket_state>>
+        //     m_recovery_tickets;
 
-        void handle_prepare(
-            const commit_callback_type& commit_cb,
-            ticket_number_type ticket_number,
-            uint64_t shard_idx,
-            parsec::runtime_locking_shard::interface::prepare_return_type res);
+        // void handle_prepare(
+        //     const commit_callback_type& commit_cb,
+        //     ticket_number_type ticket_number,
+        //     uint64_t shard_idx,
+        //     parsec::runtime_locking_shard::interface::prepare_return_type
+        //     res);
 
-        void handle_commit(
-            const commit_callback_type& commit_cb,
-            ticket_number_type ticket_number,
-            uint64_t shard_idx,
-            parsec::runtime_locking_shard::interface::commit_return_type res);
+        // void handle_commit(
+        //     const commit_callback_type& commit_cb,
+        //     ticket_number_type ticket_number,
+        //     uint64_t shard_idx,
+        //     parsec::runtime_locking_shard::interface::commit_return_type
+        //     res);
 
-        void handle_lock(ticket_number_type ticket_number,
-                         key_type key,
-                         uint64_t shard_idx,
-                         const try_lock_callback_type& result_callback,
-                         const parsec::runtime_locking_shard::interface::
-                             try_lock_return_type& res);
+        // void handle_lock(ticket_number_type ticket_number,
+        //                  key_type key,
+        //                  uint64_t shard_idx,
+        //                  const try_lock_callback_type& result_callback,
+        //                  const parsec::runtime_locking_shard::interface::
+        //                      try_lock_return_type& res);
 
-        void handle_ticket_number(
-            begin_callback_type result_callback,
-            std::optional<parsec::ticket_machine::interface::
-                              get_ticket_number_return_type> res);
+        // // void handle_ticket_number(
+        // //     begin_callback_type result_callback,
+        // //     std::optional<parsec::ticket_machine::interface::
+        // //                       get_ticket_number_return_type> res);
 
-        void handle_rollback(
-            const rollback_callback_type& result_callback,
-            ticket_number_type ticket_number,
-            uint64_t shard_idx,
-            parsec::runtime_locking_shard::interface::rollback_return_type
-                res);
+        // void handle_rollback(
+        //     const rollback_callback_type& result_callback,
+        //     ticket_number_type ticket_number,
+        //     uint64_t shard_idx,
+        //     parsec::runtime_locking_shard::interface::rollback_return_type
+        //         res);
 
-        void handle_find_key(
-            ticket_number_type ticket_number,
-            key_type key,
-            lock_type locktype,
-            try_lock_callback_type result_callback,
-            std::optional<
-                parsec::directory::interface::key_location_return_type> res);
+        // void handle_find_key(
+        //     ticket_number_type ticket_number,
+        //     key_type key,
+        //     lock_type locktype,
+        //     try_lock_callback_type result_callback,
+        //     std::optional<
+        //         parsec::directory::interface::key_location_return_type>
+        //         res);
 
-        void handle_finish(
-            const finish_callback_type& result_callback,
-            ticket_number_type ticket_number,
-            uint64_t shard_idx,
-            parsec::runtime_locking_shard::interface::finish_return_type res);
+        // void handle_finish(
+        //     const finish_callback_type& result_callback,
+        //     ticket_number_type ticket_number,
+        //     uint64_t shard_idx,
+        //     parsec::runtime_locking_shard::interface::finish_return_type
+        //     res);
 
-        void handle_get_tickets(const recover_callback_type& result_callback,
-                                uint64_t shard_idx,
-                                const parsec::runtime_locking_shard::
-                                    interface::get_tickets_return_type& res);
+        // void handle_get_tickets(const recover_callback_type&
+        // result_callback,
+        //                         uint64_t shard_idx,
+        //                         const parsec::runtime_locking_shard::
+        //                             interface::get_tickets_return_type&
+        //                             res);
 
-        void
-        handle_recovery_commit(const recover_callback_type& result_callback,
-                               ticket_number_type ticket_number,
-                               const commit_return_type& res);
+        // void
+        // handle_recovery_commit(const recover_callback_type& result_callback,
+        //                        ticket_number_type ticket_number,
+        //                        const commit_return_type& res);
 
-        void
-        handle_recovery_finish(const recover_callback_type& result_callback,
-                               finish_return_type res);
+        // void
+        // handle_recovery_finish(const recover_callback_type& result_callback,
+        //                        finish_return_type res);
 
-        void
-        handle_recovery_rollback(const recover_callback_type& result_callback,
-                                 ticket_number_type ticket_number,
-                                 rollback_return_type res);
+        // void
+        // handle_recovery_rollback(const recover_callback_type&
+        // result_callback,
+        //                          ticket_number_type ticket_number,
+        //                          rollback_return_type res);
 
-        auto do_commit(const commit_callback_type& commit_cb,
-                       ticket_number_type ticket_number,
-                       const std::shared_ptr<state>& ts)
-            -> std::optional<error_code>;
+        // auto do_commit(const commit_callback_type& commit_cb,
+        //                ticket_number_type ticket_number,
+        //                const std::shared_ptr<state>& ts)
+        //     -> std::optional<error_code>;
 
-        auto do_handle_prepare(const commit_callback_type& commit_cb,
-                               ticket_number_type ticket_number,
-                               const std::shared_ptr<state>& ts,
-                               uint64_t shard_idx,
-                               const parsec::runtime_locking_shard::interface::
-                                   prepare_return_type& res)
-            -> std::optional<commit_return_type>;
+        // auto do_handle_prepare(const commit_callback_type& commit_cb,
+        //                        ticket_number_type ticket_number,
+        //                        const std::shared_ptr<state>& ts,
+        //                        uint64_t shard_idx,
+        //                        const
+        //                        parsec::runtime_locking_shard::interface::
+        //                            prepare_return_type& res)
+        //     -> std::optional<commit_return_type>;
 
-        auto do_prepare(const commit_callback_type& result_callback,
-                        ticket_number_type ticket_number,
-                        const std::shared_ptr<state>& t_state,
-                        const state_update_type& state_updates)
-            -> std::optional<error_code>;
+        // auto do_prepare(const commit_callback_type& result_callback,
+        //                 ticket_number_type ticket_number,
+        //                 const std::shared_ptr<state>& t_state,
+        //                 const state_update_type& state_updates)
+        //     -> std::optional<error_code>;
 
-        auto do_recovery(const recover_callback_type& result_callback)
-            -> std::optional<error_code>;
+        // auto do_recovery(const recover_callback_type& result_callback)
+        //     -> std::optional<error_code>;
     };
 }
 

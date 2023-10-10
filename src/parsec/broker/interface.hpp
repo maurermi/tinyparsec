@@ -85,7 +85,7 @@ namespace cbdc::parsec::broker {
             = std::variant<ticket_number_type, error_code>;
         /// Callback function type for a begin operation.
         using begin_callback_type
-            = std::function<void(ticketnum_or_errcode_type)>;
+            = std::function<void()>;
 
         /// Acquires a new ticket number to begin a transaction.
         /// \param result_callback function to call with begin result.
@@ -105,14 +105,14 @@ namespace cbdc::parsec::broker {
             = std::function<void(try_lock_return_type)>;
 
         /// Attempts to acquire the given lock on the appropriate shard.
-        /// \param ticket_number ticket number.
         /// \param key key to lock.
+        /// \param value value to write (if write lock)
         /// \param locktype type of lock to acquire.
         /// \param result_callback function to call with try lock result.
         /// \return true if the operation was initiated successfully.
         [[nodiscard]] virtual auto
-        try_lock(ticket_number_type ticket_number,
-                 key_type key,
+        try_lock(key_type key,
+                 value_type value,
                  lock_type locktype,
                  try_lock_callback_type result_callback) -> bool
             = 0;
@@ -129,65 +129,73 @@ namespace cbdc::parsec::broker {
         /// \param state_updates state updates to commit.
         /// \param result_callback function to call with commit result.
         /// \return true if the operation was initiated successfully.
-        [[nodiscard]] virtual auto commit(ticket_number_type ticket_number,
-                                          state_update_type state_updates,
+        [[nodiscard]] virtual auto commit(state_update_type state_updates,
                                           commit_callback_type result_callback)
             -> bool
             = 0;
 
-        /// Return type from a finish operation. Broker error code, if
-        /// applicable.
-        using finish_return_type = std::optional<error_code>;
-        /// Callback function type for a finish operation.
-        using finish_callback_type = std::function<void(finish_return_type)>;
+        // /// Return type from a finish operation. Broker error code, if
+        // /// applicable.
+        // using finish_return_type = std::optional<error_code>;
+        // /// Callback function type for a finish operation.
+        // using finish_callback_type =
+        // std::function<void(finish_return_type)>;
 
-        /// Finishes a ticket on all shards involved in the ticket.
-        /// \param ticket_number ticket number.
-        /// \param result_callback function to call with finish result.
-        /// \return true if the operation was initiated successfully.
-        [[nodiscard]] virtual auto finish(ticket_number_type ticket_number,
-                                          finish_callback_type result_callback)
-            -> bool
-            = 0;
+        // // /// Finishes a ticket on all shards involved in the ticket.
+        // // /// \param ticket_number ticket number.
+        // // /// \param result_callback function to call with finish result.
+        // // /// \return true if the operation was initiated successfully.
+        // // [[nodiscard]] virtual auto finish(ticket_number_type
+        // ticket_number,
+        // //                                   finish_callback_type
+        // result_callback)
+        // //     -> bool
+        // //     = 0;
 
-        /// Return type from a rollback operation. Broker or shard error code,
-        /// if applicable.
-        using rollback_return_type = std::optional<
-            std::variant<error_code, runtime_locking_shard::error_code>>;
-        /// Callback function type for a rollback operation.
-        using rollback_callback_type
-            = std::function<void(rollback_return_type)>;
+        // /// Return type from a rollback operation. Broker or shard error
+        // code,
+        // /// if applicable.
+        // using rollback_return_type = std::optional<
+        //     std::variant<error_code, runtime_locking_shard::error_code>>;
+        // /// Callback function type for a rollback operation.
+        // using rollback_callback_type
+        //     = std::function<void(rollback_return_type)>;
 
-        /// Rollback a ticket on all shards involved in the ticket.
-        /// \param ticket_number ticket number.
-        /// \param result_callback function to call with rollback result.
-        /// \return true if the operation was initiated successfully.
-        [[nodiscard]] virtual auto
-        rollback(ticket_number_type ticket_number,
-                 rollback_callback_type result_callback) -> bool
-            = 0;
+        // // /// Rollback a ticket on all shards involved in the ticket.
+        // // /// \param ticket_number ticket number.
+        // // /// \param result_callback function to call with rollback result.
+        // // /// \return true if the operation was initiated successfully.
+        // // [[nodiscard]] virtual auto
+        // // rollback(ticket_number_type ticket_number,
+        // //          rollback_callback_type result_callback) -> bool
+        // //     = 0;
 
-        /// Return type from a recover operation. Broker error code, if
-        /// applicable.
-        using recover_return_type = std::optional<error_code>;
-        /// Callback function type for a recovery operation.
-        using recover_callback_type = std::function<void(recover_return_type)>;
+        // /// Return type from a recover operation. Broker error code, if
+        // /// applicable.
+        // using recover_return_type = std::optional<error_code>;
+        // /// Callback function type for a recovery operation.
+        // using recover_callback_type =
+        // std::function<void(recover_return_type)>;
 
-        /// Retrieves tickets associated with this broker from all shards and
-        /// completes partially committed tickets, and rolls back uncommitted
-        /// tickets. Finishes all tickets.
-        /// \param result_callback function to call with recovery result.
-        /// \return true if the operation was initated successfully.
-        [[nodiscard]] virtual auto
-        recover(recover_callback_type result_callback) -> bool
-            = 0;
+        // /// Retrieves tickets associated with this broker from all shards
+        // and
+        // /// completes partially committed tickets, and rolls back
+        // uncommitted
+        // /// tickets. Finishes all tickets.
+        // /// \param result_callback function to call with recovery result.
+        // /// \return true if the operation was initated successfully.
+        // [[nodiscard]] virtual auto
+        // recover(recover_callback_type result_callback) -> bool
+        //     = 0;
 
-        /// Get the highest ticket number that was used. This is not to be
-        /// used for calculating a next ticket number, but is used to calculate
-        /// the pretend height of the chain in the evm runner, which is derived
-        /// from ticket numbers
-        /// \return highest ticket number that was used
-        virtual auto highest_ticket() -> ticket_number_type = 0;
+        // /// Get the highest ticket number that was used. This is not to be
+        // /// used for calculating a next ticket number, but is used to
+        // calculate
+        // /// the pretend height of the chain in the evm runner, which is
+        // derived
+        // /// from ticket numbers
+        // /// \return highest ticket number that was used
+        // virtual auto highest_ticket() -> ticket_number_type = 0;
     };
 }
 

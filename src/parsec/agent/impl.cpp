@@ -49,21 +49,22 @@ namespace cbdc::parsec::agent {
                 m_result = std::nullopt;
                 m_wounded = false;
                 m_restarted = true;
-                do_start();
+                do_start(); // need to implement in tinyparsec
                 return true;
 
             // Re-run commit
             case state::commit_failed:
                 [[fallthrough]];
             case state::commit_sent:
-                do_commit();
+                do_commit(); // need to implement in tinyparsec
                 return true;
 
             // Re-run rollback with prior error type flag
             case state::rollback_failed:
                 [[fallthrough]];
             case state::rollback_sent:
-                do_rollback(m_permanent_error);
+                // do_rollback(
+                //     m_permanent_error); // need to implement in tinyparsec
                 return true;
 
             // Rollback first so we can start fresh
@@ -71,7 +72,7 @@ namespace cbdc::parsec::agent {
             case state::function_get_failed:
             case state::function_failed:
             case state::function_started:
-                do_rollback(false);
+                // do_rollback(false);
                 return true;
 
             // Re-run finish
@@ -80,7 +81,7 @@ namespace cbdc::parsec::agent {
             case state::finish_failed:
                 // Committed but transient error running finish, cannot
                 // rollback, need to retry finish
-                do_finish();
+                // do_finish(); // need to implement in tinyparsec
                 return true;
 
             // End states, cannot re-run exec
@@ -93,48 +94,52 @@ namespace cbdc::parsec::agent {
 
         m_result = std::nullopt;
         m_state = state::begin_sent;
-        auto success = m_broker->begin(
-            [&](broker::interface::ticketnum_or_errcode_type res) {
-                handle_begin(res);
-            });
+        auto success
+            = m_broker->begin( // need to implement in tinyparsec // this call
+                               // might be wholly unneccessary
+                [&]() {
+                    do_start();
+                });
 
-        if(!success) {
-            m_state = state::begin_failed;
-            m_log->error("Failed to contact broker to begin");
-            m_result = error_code::broker_unreachable;
-            do_result();
-        }
+        // if(!success) {
+        //     m_state = state::begin_failed;
+        //     m_log->error("Failed to contact broker to begin");
+        //     m_result = error_code::broker_unreachable;
+        //     do_result(); // need to implement in tinyparsec
+        // }
 
-        return true;
+        return success;
     }
 
-    void impl::handle_begin(broker::interface::ticketnum_or_errcode_type res) {
-        std::unique_lock l(m_mut);
-        if(m_state != state::begin_sent) {
-            m_log->warn("handle_begin while not in begin_sent state");
-            return;
-        }
-        std::visit(
-            overloaded{[&](const ticket_machine::ticket_number_type& n) {
-                           m_ticket_number = n;
-                           do_start();
-                       },
-                       [&](const broker::interface::error_code& /* e */) {
-                           m_state = state::begin_failed;
-                           m_log->error(
-                               "Broker failed to assign a ticket number");
-                           m_result = error_code::ticket_number_assignment;
-                           do_result();
-                       }},
-            res);
-    }
+    // void impl::handle_begin(broker::interface::ticketnum_or_errcode_type
+    // res) {
+    //     std::unique_lock l(m_mut);
+    //     if(m_state != state::begin_sent) {
+    //         m_log->warn("handle_begin while not in begin_sent state");
+    //         return;
+    //     }
+    //     std::visit(
+    //         overloaded{[&](const ticket_machine::ticket_number_type& n) {
+    //                        m_ticket_number = n;
+    //                        do_start();
+    //                    },
+    //                    [&](const broker::interface::error_code& /* e */) {
+    //                        m_state = state::begin_failed;
+    //                        m_log->error(
+    //                            "Broker failed to assign a ticket number");
+    //                        m_result = error_code::ticket_number_assignment;
+    //                        do_result();
+    //                    }},
+    //         res);
+    // }
 
     void impl::do_start() {
         std::unique_lock l(m_mut);
-        assert(m_ticket_number.has_value());
-        assert(m_state == state::begin_sent
-               || m_state == state::rollback_complete);
-        m_state = state::function_get_sent;
+        m_ticket_number = 1;
+        // assert(m_ticket_number.has_value());
+        // assert(m_state == state::begin_sent
+        //        || m_state == state::rollback_complete);
+        // m_state = state::function_get_sent;
 
         if(m_is_readonly_run && get_function().size() == 0) {
             // If this is a read-only run and the function key is empty, the
@@ -151,9 +156,9 @@ namespace cbdc::parsec::agent {
         } else {
             m_log->trace("do_start ", get_function().to_hex());
 
-            auto tl_success = m_broker->try_lock(
-                m_ticket_number.value(),
+            auto tl_success = m_broker->try_lock( // maybe don't need this
                 get_function(),
+                cbdc::buffer(),
                 m_initial_lock_type,
                 [this](
                     const broker::interface::try_lock_return_type& lock_res) {
@@ -228,8 +233,8 @@ namespace cbdc::parsec::agent {
         auto actual_lock_type
             = m_is_readonly_run ? broker::lock_type::read : locktype;
         return m_broker->try_lock(
-            m_ticket_number.value(),
             std::move(key),
+            cbdc::buffer(),
             actual_lock_type,
             [this, cb = std::move(res_cb)](
                 broker::interface::try_lock_return_type res) {
@@ -240,11 +245,11 @@ namespace cbdc::parsec::agent {
     void
     impl::handle_function(const broker::interface::try_lock_return_type& res) {
         std::unique_lock l(m_mut);
-        if(m_state != state::function_get_sent) {
-            m_log->warn(
-                "handle_function while not in function_get_sent state");
-            return;
-        }
+        // if(m_state != state::function_get_sent) {
+        //     m_log->warn(
+        //         "handle_function while not in function_get_sent state");
+        //     return;
+        // }
         std::visit(
             overloaded{
                 [&](const broker::value_type& v) {
@@ -353,9 +358,9 @@ namespace cbdc::parsec::agent {
 
     void impl::do_commit() {
         std::unique_lock l(m_mut);
-        assert(m_state == state::function_started
-               || m_state == state::commit_failed
-               || m_state == state::commit_sent);
+        // assert(m_state == state::function_started
+        //        || m_state == state::commit_failed
+        //        || m_state == state::commit_sent);
         assert(m_result.has_value());
         assert(m_ticket_number.has_value());
         assert(std::holds_alternative<broker::state_update_type>(
@@ -369,7 +374,6 @@ namespace cbdc::parsec::agent {
             payload = std::get<broker::state_update_type>(m_result.value());
         }
         auto maybe_success = m_broker->commit(
-            m_ticket_number.value(),
             payload,
             [this](broker::interface::commit_return_type commit_res) {
                 handle_commit(std::move(commit_res));
@@ -515,7 +519,7 @@ namespace cbdc::parsec::agent {
             case state::function_get_failed:
             case state::function_failed:
             case state::commit_failed:
-                do_rollback(false);
+                // do_rollback(false);
                 return;
 
             case state::finish_failed:
@@ -530,7 +534,7 @@ namespace cbdc::parsec::agent {
             case state::function_get_error:
             case state::commit_error:
             case state::function_exception:
-                do_rollback(true);
+                // do_rollback(true);
                 return;
 
             // Ran to completion
@@ -546,108 +550,109 @@ namespace cbdc::parsec::agent {
 
     void impl::do_finish() {
         std::unique_lock l(m_mut);
-        assert(m_state == state::commit_sent || m_state == state::finish_failed
-               || m_state == state::finish_sent
-               || m_state == state::rollback_complete);
-        assert(m_ticket_number.has_value());
+        // assert(m_state == state::commit_sent || m_state ==
+        // state::finish_failed
+        //        || m_state == state::finish_sent
+        //        || m_state == state::rollback_complete);
+        // assert(m_ticket_number.has_value());
         m_state = state::finish_sent;
         m_log->trace(this,
                      "Agent requesting finish for",
                      m_ticket_number.value());
-        auto maybe_success = m_broker->finish(
-            m_ticket_number.value(),
-            [this](broker::interface::finish_return_type finish_res) {
-                handle_finish(finish_res);
-            });
-        if(!maybe_success) {
-            m_state = state::finish_failed;
-            m_log->error("Error contacting broker for finish");
-            m_result = error_code::broker_unreachable;
-            do_result();
-        }
+        // auto maybe_success = m_broker->finish(
+        //     m_ticket_number.value(),
+        //     [this](broker::interface::finish_return_type finish_res) {
+        //         handle_finish(finish_res);
+        //     });
+        // auto maybe_success = true;
+        // if(!maybe_success) {
+        //     m_state = state::finish_failed;
+        //     m_log->error("Error contacting broker for finish");
+        //     m_result = error_code::broker_unreachable;
+        //     do_result();
+        // }
     }
 
-    void
-    impl::handle_finish(broker::interface::finish_return_type finish_res) {
-        std::unique_lock l(m_mut);
-        if(m_state != state::finish_sent) {
-            m_log->warn("handle_finish while not in finish_sent state");
-            return;
-        }
-        if(finish_res.has_value()) {
-            m_state = state::finish_failed;
-            m_log->error("Broker error for finish for",
-                         m_ticket_number.value());
-            m_result = error_code::finish_error;
-            do_result();
-        } else {
-            m_state = state::finish_complete;
-            m_log->trace(this,
-                         "Agent handled finish for",
-                         m_ticket_number.value());
-            do_result();
-        }
-    }
+    // void
+    // impl::handle_finish(broker::interface::finish_return_type finish_res) {
+    //     std::unique_lock l(m_mut);
+    //     if(m_state != state::finish_sent) {
+    //         m_log->warn("handle_finish while not in finish_sent state");
+    //         return;
+    //     }
+    //     if(finish_res.has_value()) {
+    //         m_state = state::finish_failed;
+    //         m_log->error("Broker error for finish for",
+    //                      m_ticket_number.value());
+    //         m_result = error_code::finish_error;
+    //         do_result();
+    //     } else {
+    //         m_state = state::finish_complete;
+    //         m_log->trace(this,
+    //                      "Agent handled finish for",
+    //                      m_ticket_number.value());
+    //         do_result();
+    //     }
+    // }
 
-    void impl::do_rollback(bool finish) {
-        std::unique_lock l(m_mut);
-        assert(m_state == state::commit_failed
-               || m_state == state::rollback_sent
-               || m_state == state::function_exception
-               || m_state == state::function_failed
-               || m_state == state::commit_error
-               || m_state == state::function_get_failed
-               || m_state == state::function_get_error
-               || m_state == state::function_started
-               || m_state == state::rollback_failed);
-        assert(m_ticket_number.has_value());
-        m_log->trace(this, "Agent rolling back", m_ticket_number.value());
-        m_state = state::rollback_sent;
-        m_permanent_error = finish;
-        auto maybe_success = m_broker->rollback(
-            m_ticket_number.value(),
-            [this](broker::interface::rollback_return_type rollback_res) {
-                handle_rollback(rollback_res);
-            });
-        if(!maybe_success) {
-            m_state = state::rollback_failed;
-            m_log->error("Error contacting broker for rollback");
-            m_result = error_code::broker_unreachable;
-            do_result();
-        }
-    }
+    // void impl::do_rollback(bool finish) {
+    //     std::unique_lock l(m_mut);
+    //     assert(m_state == state::commit_failed
+    //            || m_state == state::rollback_sent
+    //            || m_state == state::function_exception
+    //            || m_state == state::function_failed
+    //            || m_state == state::commit_error
+    //            || m_state == state::function_get_failed
+    //            || m_state == state::function_get_error
+    //            || m_state == state::function_started
+    //            || m_state == state::rollback_failed);
+    //     assert(m_ticket_number.has_value());
+    //     m_log->trace(this, "Agent rolling back", m_ticket_number.value());
+    //     m_state = state::rollback_sent;
+    //     m_permanent_error = finish;
+    //     auto maybe_success = m_broker->rollback(
+    //         m_ticket_number.value(),
+    //         [this](broker::interface::rollback_return_type rollback_res) {
+    //             handle_rollback(rollback_res);
+    //         });
+    //     if(!maybe_success) {
+    //         m_state = state::rollback_failed;
+    //         m_log->error("Error contacting broker for rollback");
+    //         m_result = error_code::broker_unreachable;
+    //         do_result();
+    //     }
+    // }
 
-    void impl::handle_rollback(
-        broker::interface::rollback_return_type rollback_res) {
-        std::unique_lock l(m_mut);
-        if(m_state != state::rollback_sent) {
-            m_log->warn("handle_rollback while not in rollback_sent state");
-            return;
-        }
-        if(rollback_res.has_value()) {
-            m_state = state::rollback_failed;
-            m_result = error_code::rollback_error;
-            m_log->error("Broker error rolling back", m_ticket_number.value());
-            do_result();
-            return;
-        }
+    // void impl::handle_rollback(
+    //     broker::interface::rollback_return_type rollback_res) {
+    //     std::unique_lock l(m_mut);
+    //     if(m_state != state::rollback_sent) {
+    //         m_log->warn("handle_rollback while not in rollback_sent state");
+    //         return;
+    //     }
+    //     if(rollback_res.has_value()) {
+    //         m_state = state::rollback_failed;
+    //         m_result = error_code::rollback_error;
+    //         m_log->error("Broker error rolling back",
+    //         m_ticket_number.value()); do_result(); return;
+    //     }
 
-        m_state = state::rollback_complete;
-        m_log->trace(this, "Agent rolled back", m_ticket_number.value());
-        if(m_permanent_error) {
-            m_log->trace(this,
-                         "Agent finishing due to permanent error",
-                         m_ticket_number.value());
-            do_finish();
-        } else {
-            // Transient error, try again
-            m_log->debug(this,
-                         "Agent should restart",
-                         m_ticket_number.value());
-            m_result = error_code::retry;
-            do_result();
-        }
-    }
+    //     m_state = state::rollback_complete;
+    //     m_log->trace(this, "Agent rolled back", m_ticket_number.value());
+    //     if(m_permanent_error) {
+    //         m_log->trace(this,
+    //                      "Agent finishing due to permanent error",
+    //                      m_ticket_number.value());
+    //         do_finish();
+    //     } else {
+    //         // Transient error, try again
+    //         m_log->debug(this,
+    //                      "Agent should restart",
+    //                      m_ticket_number.value());
+    //         m_result = error_code::retry;
+    //         do_result();
+    //     }
+    // }
 
     impl::~impl() {
         std::unique_lock l(m_mut);

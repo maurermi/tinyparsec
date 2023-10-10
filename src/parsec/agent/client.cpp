@@ -26,8 +26,13 @@ namespace cbdc::parsec::agent::rpc {
             = request{std::move(function), std::move(param), is_readonly_run};
         return m_client->call(std::move(req),
                               [result_callback](std::optional<response> resp) {
-                                  assert(resp.has_value());
-                                  result_callback(resp.value());
+                                  if(resp.has_value()) {
+                                      result_callback(resp.value());
+                                  } else {
+                                      result_callback(interface::error_code::broker_unreachable);
+                                  }
+                                  //   assert(resp.has_value());
+                                  //   result_callback(resp.value());
                               });
     }
 }

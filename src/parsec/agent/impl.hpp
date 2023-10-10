@@ -98,7 +98,7 @@ namespace cbdc::parsec::agent {
         /// \return ticket number, or std::nullopt if no ticket number has been
         ///         assigned yet.
         auto get_ticket_number() const
-            -> std::optional<ticket_machine::ticket_number_type>;
+            -> std::optional<ticket_machine::ticket_number_type>; // get the ticket value in broker
 
         /// Return the state of the ticket.
         /// \return ticket state.
@@ -141,7 +141,7 @@ namespace cbdc::parsec::agent {
 
         void do_runner(broker::value_type v);
 
-        void do_rollback(bool finish);
+        // void do_rollback(bool finish);
 
         void do_commit();
 
@@ -153,10 +153,10 @@ namespace cbdc::parsec::agent {
                             broker::interface::try_lock_callback_type res_cb)
             -> bool;
 
-        void
-        handle_rollback(broker::interface::rollback_return_type rollback_res);
+        // void
+        // handle_rollback(broker::interface::rollback_return_type rollback_res);
 
-        void handle_finish(broker::interface::finish_return_type finish_res);
+        // void handle_finish(broker::interface::finish_return_type finish_res);
 
         void handle_try_lock_response(
             const broker::interface::try_lock_callback_type& res_cb,

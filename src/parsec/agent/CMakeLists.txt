@@ -14,7 +14,7 @@ target_link_libraries(agentd broker
                              ticket_machine
                              runtime_locking_shard
                              parsec
-                             evm_runner
+                             #evm_runner
                              lua_runner
                              agent
                              json_rpc_http

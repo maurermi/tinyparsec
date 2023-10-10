@@ -17,17 +17,20 @@ namespace cbdc::parsec {
     account_wallet::account_wallet(std::shared_ptr<logging::log> log,
                                    std::shared_ptr<broker::interface> broker,
                                    std::shared_ptr<agent::rpc::client> agent,
-                                   cbdc::buffer pay_contract_key)
+                                   cbdc::buffer pay_contract_key,
+                                   std::string id)
         : m_log(std::move(log)),
           m_agent(std::move(agent)),
           m_broker(std::move(broker)),
-          m_pay_contract_key(std::move(pay_contract_key)) {
+          m_pay_contract_key(std::move(pay_contract_key)),
+          m_id(id) {
         auto rnd = cbdc::random_source(cbdc::config::random_source);
         m_privkey = rnd.random_hash();
         m_pubkey = cbdc::pubkey_from_privkey(m_privkey, m_secp.get());
         constexpr auto account_prefix = "account_";
         m_account_key.append(account_prefix, std::strlen(account_prefix));
-        m_account_key.append(m_pubkey.data(), m_pubkey.size());
+        m_account_key.append(id.c_str(), id.length());
+        m_balance = 10000;
     }
 
     auto account_wallet::init(uint64_t value,
@@ -48,7 +51,7 @@ namespace cbdc::parsec {
         return res;
     }
 
-    auto account_wallet::pay(pubkey_t to,
+    auto account_wallet::pay(std::string to,
                              uint64_t amount,
                              const std::function<void(bool)>& result_callback)
         -> bool {
@@ -63,22 +66,26 @@ namespace cbdc::parsec {
         return m_pubkey;
     }
 
+    auto account_wallet::get_id() const -> std::string {
+        return m_id;
+    }
+
     auto account_wallet::update_balance(
         const std::function<void(bool)>& result_callback) -> bool {
-        auto params = make_pay_params(pubkey_t{}, 0);
+        auto params = make_pay_params(std::string(), 0);
         return execute_params(params, false, result_callback);
     }
 
-    auto account_wallet::make_pay_params(pubkey_t to, uint64_t amount) const
+    auto account_wallet::make_pay_params(std::string to, uint64_t amount) const
         -> cbdc::buffer {
         auto params = cbdc::buffer();
-        params.append(m_pubkey.data(), m_pubkey.size());
-        params.append(to.data(), to.size());
+        params.append(m_id.c_str(), m_id.length());
+        params.append(to.c_str(), to.length());
         params.append(&amount, sizeof(amount));
         params.append(&m_sequence, sizeof(m_sequence));
 
         auto sig_payload = cbdc::buffer();
-        sig_payload.append(to.data(), to.size());
+        sig_payload.append(to.c_str(), to.length());
         sig_payload.append(&amount, sizeof(amount));
         sig_payload.append(&m_sequence, sizeof(m_sequence));
 
@@ -112,15 +119,16 @@ namespace cbdc::parsec {
             std::move(params),
             dry_run,
             [&, result_callback](agent::interface::exec_return_type res) {
-                auto success = std::holds_alternative<agent::return_type>(res);
-                if(success) {
-                    auto updates = std::get<agent::return_type>(res);
-                    auto it = updates.find(m_account_key);
-                    assert(it != updates.end());
-                    auto deser = cbdc::buffer_serializer(it->second);
-                    deser >> m_balance >> m_sequence;
-                }
-                result_callback(success);
+                // auto success =
+                // std::holds_alternative<agent::return_type>(res); if(success)
+                // {
+                auto updates = std::get<agent::return_type>(res);
+                auto it = updates.find(m_account_key);
+                assert(it != updates.end());
+                auto deser = cbdc::buffer_serializer(it->second);
+                deser >> m_balance >> m_sequence;
+                // }
+                result_callback(true);
             });
         return send_success;
     }

@@ -5,17 +5,17 @@
 
 #include "broker/impl.hpp"
 #include "crypto/sha256.h"
-#include "directory/impl.hpp"
+// #include "directory/impl.hpp"
 #include "format.hpp"
 #include "impl.hpp"
-#include "runners/evm/format.hpp"
-#include "runners/evm/http_server.hpp"
-#include "runners/evm/math.hpp"
-#include "runners/evm/messages.hpp"
-#include "runners/evm/util.hpp"
+// #include "runners/evm/format.hpp"
+// #include "runners/evm/http_server.hpp"
+// #include "runners/evm/math.hpp"
+// #include "runners/evm/messages.hpp"
+// #include "runners/evm/util.hpp"
 #include "runners/lua/server.hpp"
-#include "runtime_locking_shard/client.hpp"
-#include "ticket_machine/client.hpp"
+// #include "runtime_locking_shard/client.hpp"
+// #include "ticket_machine/client.hpp"
 #include "util.hpp"
 #include "util/common/logging.hpp"
 #include "util/rpc/format.hpp"
@@ -23,6 +23,7 @@
 #include "util/serialization/format.hpp"
 
 #include <csignal>
+#include <lua.hpp>
 
 auto main(int argc, char** argv) -> int {
     auto log = std::make_shared<cbdc::logging::log>(
@@ -44,81 +45,144 @@ auto main(int argc, char** argv) -> int {
         return 1;
     }
 
-    log->info("Connecting to shards...");
+    /* Not needed in tinyparsec */
+    // log->info("Connecting to shards...");
 
-    auto shards = std::vector<
-        std::shared_ptr<cbdc::parsec::runtime_locking_shard::interface>>();
-    for(const auto& shard_ep : cfg->m_shard_endpoints) {
-        auto client = std::make_shared<
-            cbdc::parsec::runtime_locking_shard::rpc::client>(
-            std::vector<cbdc::network::endpoint_t>{shard_ep});
-        if(!client->init()) {
-            log->error("Error connecting to shard");
-            return 1;
-        }
-        shards.emplace_back(client);
-    }
+    // auto shards = std::vector<
+    //     std::shared_ptr<cbdc::parsec::runtime_locking_shard::interface>>();
+    // for(const auto& shard_ep : cfg->m_shard_endpoints) {
+    //     auto client = std::make_shared<
+    //         cbdc::parsec::runtime_locking_shard::rpc::client>(
+    //         std::vector<cbdc::network::endpoint_t>{shard_ep});
+    //     if(!client->init()) {
+    //         log->error("Error connecting to shard");
+    //         return 1;
+    //     }
+    //     shards.emplace_back(client);
+    // }
 
-    log->info("Connected to shards, connecting to ticketer...");
+    // log->info("Connected to shards, connecting to ticketer...");
 
-    auto ticketer
-        = std::make_shared<cbdc::parsec::ticket_machine::rpc::client>(
-            std::vector<cbdc::network::endpoint_t>{
-                cfg->m_ticket_machine_endpoints});
-    if(!ticketer->init()) {
-        log->error("Error connecting to ticket machine");
-        return 1;
-    }
+    /* Not needed in tinyparsec */
+    // auto ticketer
+    //     = std::make_shared<cbdc::parsec::ticket_machine::rpc::client>(
+    //         std::vector<cbdc::network::endpoint_t>{
+    //             cfg->m_ticket_machine_endpoints});
+    // if(!ticketer->init()) {
+    //     log->error("Error connecting to ticket machine");
+    //     return 1;
+    // }
 
-    auto directory
-        = std::make_shared<cbdc::parsec::directory::impl>(shards.size());
+    // auto directory
+    //     = std::make_shared<cbdc::parsec::directory::impl>(shards.size());
+
     auto broker
         = std::make_shared<cbdc::parsec::broker::impl>(cfg->m_component_id,
-                                                       shards,
-                                                       ticketer,
-                                                       directory,
                                                        log);
 
     log->info("Requesting broker recovery...");
 
-    auto recover_success = std::promise<bool>();
-    auto recover_fut = recover_success.get_future();
-    auto success = broker->recover(
-        [&](cbdc::parsec::broker::interface::recover_return_type res) {
-            recover_success.set_value(!res.has_value());
-        });
-    if(!success) {
-        log->error("Error requesting broker recovery");
+    auto contract_file = "tools/bench/parsec/lua/gen_pay_contract.lua";
+    auto pay_contract = cbdc::buffer();
+    lua_State* L = luaL_newstate();
+    luaL_openlibs(L);
+    luaL_dofile(L, contract_file);
+    lua_getglobal(L, "gen_bytecode");
+    if(lua_pcall(L, 0, 1, 0) != 0) {
+        log->error("Contract bytecode generation failed, with error:",
+                   lua_tostring(L, -1));
         return 1;
     }
+    pay_contract = cbdc::buffer::from_hex(lua_tostring(L, -1)).value();
 
-    constexpr auto recover_delay = std::chrono::seconds(60);
-    auto wait_res = recover_fut.wait_for(recover_delay);
-    if(wait_res == std::future_status::timeout) {
-        log->error("Timeout waiting for broker recovery");
-        return 1;
-    }
-    auto recover_res = recover_fut.get();
-    if(!recover_res) {
-        log->error("Error during broker recovery");
-        return 1;
-    }
-
-    if(cfg->m_runner_type == cbdc::parsec::runner_type::evm) {
-        if(cfg->m_component_id == 0) {
-            auto res
-                = cbdc::parsec::agent::runner::mint_initial_accounts(log,
-                                                                     broker);
-            if(!res) {
-                log->error("Error minting initial accounts");
-                return 1;
-            }
+    auto init_count = std::atomic<size_t>();
+    auto init_error = std::atomic_bool{false};
+    auto key = cbdc::buffer();
+    key.append("pay", 3);
+    cbdc::parsec::put_row(broker, key, pay_contract, [&](bool res) {
+        if(!res) {
+            init_error = true;
         } else {
-            log->info("Not seeding, waiting so role 0 can seed");
-            static constexpr auto seeding_time = 10;
-            std::this_thread::sleep_for(std::chrono::seconds(seeding_time));
+            log->info("Inserted pay contract");
+            init_count++;
         }
+    });
+    constexpr uint64_t timeout = 300;
+    constexpr auto wait_time = std::chrono::seconds(1);
+    for(size_t count = 0; init_count < 1 && !init_error && count < timeout;
+        count++) {
+        std::this_thread::sleep_for(wait_time);
     }
+    log->trace("done");
+
+    constexpr auto value = 10000;
+    auto init_account = cbdc::buffer();
+    uint64_t sequence = 0;
+    auto ser = cbdc::buffer_serializer(init_account);
+    ser << value << sequence;
+
+    auto account = cbdc::buffer();
+
+    account.append("account_0", 9);
+    cbdc::parsec::put_row(broker, account, init_account, [&](bool res) {
+        if(!res) {
+            init_error = true;
+        } else {
+            log->info("Inserted pay contract");
+            init_count++;
+        }
+    });
+
+    account = cbdc::buffer();
+    account.append("account_1", 9);
+    cbdc::parsec::put_row(broker, account, init_account, [&](bool res) {
+        if(!res) {
+            init_error = true;
+        } else {
+            log->info("Inserted pay contract");
+            init_count++;
+        }
+    });
+
+    // auto recover_success = std::promise<bool>();
+    // auto recover_fut = recover_success.get_future();
+    // auto success = broker->recover(
+    //     [&](cbdc::parsec::broker::interface::recover_return_type res) {
+    //         recover_success.set_value(!res.has_value());
+    //     });
+    // if(!success) {
+    //     log->error("Error requesting broker recovery");
+    //     return 1;
+    // }
+
+    // constexpr auto recover_delay = std::chrono::seconds(60);
+    // auto wait_res = recover_fut.wait_for(recover_delay);
+    // if(wait_res == std::future_status::timeout) {
+    //     log->error("Timeout waiting for broker recovery");
+    //     return 1;
+    // }
+    // auto recover_res = recover_fut.get();
+    // if(!recover_res) {
+    //     log->error("Error during broker recovery");
+    //     return 1;
+    // }
+
+    // if(cfg->m_runner_type == cbdc::parsec::runner_type::evm) {
+    //     if(cfg->m_component_id == 0) {
+    //         auto res
+    //             =
+    //             cbdc::parsec::agent::runner::mint_initial_accounts(log,
+    //                                                                  broker);
+    //         if(!res) {
+    //             log->error("Error minting initial accounts");
+    //             return 1;
+    //         }
+    //     } else {
+    //         log->info("Not seeding, waiting so role 0 can seed");
+    //         static constexpr auto seeding_time = 10;
+    //         std::this_thread::sleep_for(std::chrono::seconds(seeding_time));
+    //     }
+    // }
 
     auto server
         = std::unique_ptr<cbdc::parsec::agent::rpc::server_interface>();
@@ -133,16 +197,18 @@ auto main(int argc, char** argv) -> int {
             broker,
             log,
             cfg.value());
-    } else if(cfg->m_runner_type == cbdc::parsec::runner_type::evm) {
-        auto rpc_server = std::make_unique<cbdc::rpc::json_rpc_http_server>(
-            cfg->m_agent_endpoints[cfg->m_component_id],
-            true);
-        server = std::make_unique<cbdc::parsec::agent::rpc::http_server>(
-            std::move(rpc_server),
-            broker,
-            log,
-            cfg.value());
-    } else {
+    } // else if(cfg->m_runner_type == cbdc::parsec::runner_type::evm) {
+    //     auto rpc_server =
+    //     std::make_unique<cbdc::rpc::json_rpc_http_server>(
+    //         cfg->m_agent_endpoints[cfg->m_component_id],
+    //         true);
+    //     server =
+    //     std::make_unique<cbdc::parsec::agent::rpc::http_server>(
+    //         std::move(rpc_server),
+    //         broker,
+    //         log,
+    //         cfg.value());
+    else {
         log->error("Unknown runner type");
         return 1;
     }
